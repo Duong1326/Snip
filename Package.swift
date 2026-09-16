@@ -1,25 +1,19 @@
-// swift-tools-version: 6.4
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-version: 5.9
+// Yêu cầu Swift 5.9+ để hỗ trợ macOS 13 target và SwiftUI hiện đại
+// AppKit, SwiftUI, UniformTypeIdentifiers được tự động link trên macOS — không cần khai báo thủ công
 
 import PackageDescription
 
 let package = Package(
     name: "snip",
+    // Tối thiểu macOS 13 (Ventura) — yêu cầu từ spec
+    platforms: [
+        .macOS(.v13)
+    ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
             name: "snip",
-            swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
-        ),
-        .testTarget(
-            name: "snipTests",
-            dependencies: ["snip"],
-            swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
+            path: "Sources/snip"
         ),
     ]
 )

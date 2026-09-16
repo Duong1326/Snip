@@ -1,9 +1,2 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
-
-@main
-struct snip {
-    static func main() {
-        print("Hello, world!")
-    }
-}
+// File này không dùng nữa — entry point đã chuyển sang main.swift
+// Giữ lại để tránh lỗi nếu SPM đã cache file cũ
