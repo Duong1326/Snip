@@ -1,17 +1,27 @@
 import AppKit
 
 // MARK: - DragZonePanel
-// Persistent floating NSPanel that accepts drag-and-drop from any app.
-// Always visible (no Accessibility permission required).
+// Floating NSPanel that accepts drag-and-drop from any app.
+// Hidden by default; DragMonitor calls showWithFade() when it detects a
+// drag gesture on the system, and hideWithFade() when the drag ends.
 // Designed as a frosted-glass square pinned to the bottom-right corner.
 final class DragZonePanel: NSPanel {
 
     var onDropReceived: ((ClipboardItem) -> Void)?
+    /// Called by DropTargetView after the success animation finishes (~1.3 s).
+    /// DragMonitor uses this to hide the panel automatically.
+    var onDropSucceeded: (() -> Void)?
     private var dropView: DropTargetView!
+
+    // Cached destination frame set once by positionAtBottomRight().
+    // showWithFade() MUST read from this stored value — NOT from self.frame —
+    // because self.frame may be 0×0 mid-animation from a previous show cycle,
+    // which would make every drag after the first one invisible.
+    private var panelTargetFrame: NSRect = .zero
 
     // MARK: - Init
     init() {
-        let size = NSSize(width: 110, height: 110)
+        let size = NSSize(width: 200, height: 200)
         super.init(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -28,12 +38,19 @@ final class DragZonePanel: NSPanel {
 
         setupDropView()
         positionAtBottomRight()
+        // Panel starts hidden; DragMonitor shows it when a drag is detected.
+        // orderOut keeps it completely inert (no hit-testing, no compositing cost).
     }
 
     private func setupDropView() {
-        dropView = DropTargetView(frame: NSRect(x: 0, y: 0, width: 110, height: 110))
+        let panelSize = frame.size
+        dropView = DropTargetView(frame: NSRect(origin: .zero, size: panelSize))
         dropView.onDropReceived = { [weak self] item in
             self?.onDropReceived?(item)
+        }
+        dropView.onDropSucceeded = { [weak self] in
+            // Forward to DragMonitor so it can hide the panel after the success flash.
+            self?.onDropSucceeded?()
         }
         self.contentView = dropView
     }
@@ -41,31 +58,53 @@ final class DragZonePanel: NSPanel {
     private func positionAtBottomRight() {
         guard let screen = NSScreen.main else { return }
         let sv = screen.visibleFrame
+        // Read size from the current frame (still intact at init time, before any animation).
         let size = frame.size
-        setFrameOrigin(NSPoint(
-            x: sv.maxX - size.width - 20,
-            y: sv.minY + 20
-        ))
+        let origin = NSPoint(x: sv.maxX - size.width - 20, y: sv.minY + 20)
+        setFrameOrigin(origin)
+        // Cache the correct full-size frame for use in showWithFade().
+        panelTargetFrame = NSRect(origin: origin, size: size)
     }
 
     // MARK: - Show / Hide
     func showWithFade() {
+        // Use the cached target frame — never read self.frame here because
+        // it may still be 0×0 leftover from the startFrame set during a
+        // previous animation cycle, causing the panel to stay invisible.
+        let targetFrame = panelTargetFrame
+        guard targetFrame != .zero else { return }
+
+        // Start collapsed to a zero-size point anchored at the bottom-right corner
+        // so the panel "blooms" outward from the corner rather than flying in.
+        let startFrame = NSRect(
+            x: targetFrame.maxX,
+            y: targetFrame.minY,
+            width: 0,
+            height: 0
+        )
+        setFrame(startFrame, display: false)
         alphaValue = 0
-        makeKeyAndOrderFront(nil)
+        orderFront(nil)
+
+        // Animate size and opacity together over 1 second.
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.25
+            ctx.duration = 1.0
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            self.animator().setFrame(targetFrame, display: true)
             self.animator().alphaValue = 1.0
         }
     }
 
     func hideWithFade(delay: TimeInterval = 0) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.2
-                self?.animator().alphaValue = 0
-            }, completionHandler: {
-                self?.orderOut(nil)
-            })
+            NSAnimationContext.runAnimationGroup(
+                { ctx in
+                    ctx.duration = 0.2
+                    self?.animator().alphaValue = 0
+                },
+                completionHandler: {
+                    self?.orderOut(nil)
+                })
         }
     }
 }
@@ -75,6 +114,8 @@ final class DragZonePanel: NSPanel {
 final class DropTargetView: NSView {
 
     var onDropReceived: ((ClipboardItem) -> Void)?
+    /// Fired after the 1.3 s success flash, signalling DragMonitor to hide the panel.
+    var onDropSucceeded: (() -> Void)?
 
     // MARK: - State
     enum DropState { case idle, hovering, success }
@@ -126,18 +167,18 @@ final class DropTargetView: NSView {
         switch state {
         case .idle:
             overlayColor = NSColor.black.withAlphaComponent(0.28)
-            borderColor  = NSColor.white.withAlphaComponent(0.22)
-            icon  = "📋"
+            borderColor = NSColor.white.withAlphaComponent(0.22)
+            icon = "📋"
             label = "Drag\nZone"
         case .hovering:
             overlayColor = NSColor.systemBlue.withAlphaComponent(0.38)
-            borderColor  = NSColor.systemBlue.withAlphaComponent(0.90)
-            icon  = "⬇️"
+            borderColor = NSColor.systemBlue.withAlphaComponent(0.90)
+            icon = "⬇️"
             label = "Drop\nHere"
         case .success:
             overlayColor = NSColor.systemGreen.withAlphaComponent(0.38)
-            borderColor  = NSColor.systemGreen.withAlphaComponent(0.90)
-            icon  = "✅"
+            borderColor = NSColor.systemGreen.withAlphaComponent(0.90)
+            icon = "✅"
             label = "Saved!"
         }
 
@@ -159,10 +200,11 @@ final class DropTargetView: NSView {
         let iconAttr: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 28)]
         let iconStr = NSAttributedString(string: icon, attributes: iconAttr)
         let iconSize = iconStr.size()
-        iconStr.draw(at: NSPoint(
-            x: (b.width - iconSize.width) / 2,
-            y: b.height * 0.52 + 2
-        ))
+        iconStr.draw(
+            at: NSPoint(
+                x: (b.width - iconSize.width) / 2,
+                y: b.height * 0.52 + 2
+            ))
 
         // ---- Label ----
         let para = NSMutableParagraphStyle()
@@ -170,14 +212,15 @@ final class DropTargetView: NSView {
         let labelAttr: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.white.withAlphaComponent(state == .idle ? 0.75 : 1.0),
-            .paragraphStyle: para
+            .paragraphStyle: para,
         ]
         let labelStr = NSAttributedString(string: label, attributes: labelAttr)
         let labelSize = labelStr.size()
-        labelStr.draw(at: NSPoint(
-            x: (b.width - labelSize.width) / 2,
-            y: b.height * 0.52 - labelSize.height - 4
-        ))
+        labelStr.draw(
+            at: NSPoint(
+                x: (b.width - labelSize.width) / 2,
+                y: b.height * 0.52 - labelSize.height - 4
+            ))
     }
 
     // MARK: - NSDraggingDestination
@@ -207,8 +250,9 @@ final class DropTargetView: NSView {
 
         // --- Image (TIFF) ---
         if let imgData = pb.data(forType: .tiff),
-           let image = NSImage(data: imgData),
-           let item = saveImageItem(image) {
+            let image = NSImage(data: imgData),
+            let item = saveImageItem(image)
+        {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([image])
             flashSuccess { [weak self] in self?.onDropReceived?(item) }
@@ -218,8 +262,9 @@ final class DropTargetView: NSView {
         // --- Image (PNG fallback) ---
         let pngType = NSPasteboard.PasteboardType("public.png")
         if let imgData = pb.data(forType: pngType),
-           let image = NSImage(data: imgData),
-           let item = saveImageItem(image) {
+            let image = NSImage(data: imgData),
+            let item = saveImageItem(image)
+        {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([image])
             flashSuccess { [weak self] in self?.onDropReceived?(item) }
@@ -236,6 +281,10 @@ final class DropTargetView: NSView {
         completion()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
             self?.state = .idle
+            // Notify DragMonitor that the success animation is done so it can
+            // hide the panel. We reset to .idle first so the panel looks correct
+            // if it is ever shown again for a subsequent drag.
+            self?.onDropSucceeded?()
         }
     }
 
@@ -247,9 +296,9 @@ final class DropTargetView: NSView {
 
         let fileURL = imagesDir.appendingPathComponent(UUID().uuidString + ".png")
 
-        guard let tiff   = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png    = bitmap.representation(using: .png, properties: [:])
+        guard let tiff = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
         else { return nil }
 
         do {

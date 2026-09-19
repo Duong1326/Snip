@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import CoreGraphics
 
 // MARK: - AppDelegate
 // Central coordinator for the app:
@@ -19,6 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let monitor = ClipboardMonitor()
     private var dragMonitor: DragMonitor?
 
+    // MARK: - Auto-Paste State
+    // Stores the frontmost application BEFORE the popover opens,
+    // so we can return focus to it when performing auto-paste.
+    private var previousActiveApp: NSRunningApplication?
+
     // MARK: - Lifecycle
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Enable Drag Zone by default on first launch
@@ -31,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Hide from Dock and App Switcher
         NSApplication.shared.setActivationPolicy(.accessory)
+
+        // Wire up the auto-paste callback from ClipboardMonitor
+        monitor.onAutoPasteRequested = { [weak self] in
+            self?.performAutoPaste()
+        }
     }
 
     // MARK: - Setup UI
@@ -63,9 +74,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // Capture the currently active app BEFORE our popover steals focus.
+            // This is the app the user wants to paste into later.
+            previousActiveApp = NSWorkspace.shared.frontmostApplication
+
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
+    }
+
+    // MARK: - Auto-Paste
+    // Called by ClipboardMonitor when the user double-clicks an item.
+    // Steps:
+    //  1. Close popover
+    //  2. Re-activate the app that was frontmost before popover opened
+    //  3. Wait briefly for the app to receive focus
+    //  4. Simulate Cmd+V to paste from clipboard
+    func performAutoPaste() {
+        guard checkAccessibilityPermission() else { return }
+
+        popover.performClose(nil)
+
+        if let app = previousActiveApp, !app.isTerminated {
+            app.activate(options: [])
+        }
+        // Even if previousActiveApp is nil or terminated, we still fire the key event —
+        // it will target whichever window has focus at that moment.
+
+        // Short delay so the target app has time to become key window before the keystroke.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.simulateCommandV()
+        }
+    }
+
+    // Sends a Cmd+V key-down + key-up pair via CGEvent to the HID event tap.
+    // 0x09 is the virtual keycode for the V key on all standard keyboard layouts.
+    private func simulateCommandV() {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
+        keyDown?.flags = .maskCommand
+
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
+        keyUp?.flags = .maskCommand
+
+        keyDown?.post(tap: .cghidEventTap)
+        keyUp?.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - Accessibility Permission
+    // CGEvent key simulation requires Accessibility permission.
+    // Returns true if the app is trusted; shows a guidance alert otherwise.
+    @discardableResult
+    private func checkAccessibilityPermission() -> Bool {
+        if AXIsProcessTrusted() { return true }
+
+        // Not trusted — show a user-friendly alert instead of silently failing.
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = """
+            To automatically paste content into other apps, \
+            Snip needs Accessibility access.
+
+            Go to System Settings > Privacy & Security > Accessibility \
+            and enable Snip.
+            """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            NSWorkspace.shared.open(url)
+        }
+
+        return false
     }
 
     // MARK: - Drag Zone Management

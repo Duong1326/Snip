@@ -12,6 +12,10 @@ struct ContentView: View {
     // Drag Zone toggle state, saved to UserDefaults
     @AppStorage("dragZoneEnabled") private var dragZoneEnabled = false
 
+    // Auto-Paste toggle: when enabled, double-click will simulate Cmd+V into the previous app.
+    // Defaults to true because that is the primary value-add of this feature.
+    @AppStorage("autoPasteEnabled") private var autoPasteEnabled = true
+
     // Temporary feedback state when an item is copied
     @State private var copiedID: UUID? = nil
 
@@ -108,6 +112,8 @@ struct ContentView: View {
                         item: item,
                         isCopied: copiedID == item.id,
                         onCopy: { copyItem(item) },
+                        onDoubleTap: { doubleTapItem(item) },
+                        onOpenLink: { monitor.openLink(item) },
                         onPin: { monitor.togglePin(item: item) },
                         onDelete: { monitor.deleteItem(item) }
                     )
@@ -121,6 +127,30 @@ struct ContentView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
+            // Auto-Paste toggle
+            HStack {
+                Image(systemName: "doc.on.clipboard")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Auto-Paste on Double-click")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Text("Requires Accessibility permission")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                Spacer()
+                Toggle("", isOn: $autoPasteEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            // Drag Zone toggle
             HStack {
                 Image(systemName: "arrow.down.to.line.alt")
                     .foregroundColor(.secondary)
@@ -168,6 +198,16 @@ struct ContentView: View {
             if copiedID == item.id { copiedID = nil }
         }
     }
+
+    private func doubleTapItem(_ item: ClipboardItem) {
+        if autoPasteEnabled {
+            // Auto-paste: copies to clipboard, closes popover, restores focus, simulates Cmd+V
+            monitor.pasteAndGo(item)
+        } else {
+            // Auto-paste is disabled: treat double-click the same as single-click (copy only)
+            copyItem(item)
+        }
+    }
 }
 
 // MARK: - ItemRow
@@ -175,6 +215,8 @@ struct ItemRow: View {
     let item: ClipboardItem
     let isCopied: Bool
     let onCopy: () -> Void
+    let onDoubleTap: () -> Void
+    let onOpenLink: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
 
@@ -213,7 +255,12 @@ struct ItemRow: View {
             }
         )
         .contentShape(Rectangle())
-        .onTapGesture { onCopy() }
+        // Double-tap MUST be declared before single-tap so SwiftUI can distinguish them.
+        // SwiftUI gives priority to the gesture declared first when the same gesture type
+        // (tap) appears multiple times; declaring count:2 first prevents it from being
+        // swallowed by the count:1 handler.
+        .onTapGesture(count: 2) { onDoubleTap() }
+        .onTapGesture(count: 1) { onCopy() }
         .onHover { isHovered = $0 }
         .overlay(alignment: .topLeading) {
             if item.isPinned {
@@ -223,15 +270,17 @@ struct ItemRow: View {
                     .offset(x: 2, y: 2)
             }
         }
+        .help("Click to copy · Double-click to paste")
     }
 
     @ViewBuilder
     private var contentIcon: some View {
         switch item.type {
         case .text:
-            Image(systemName: "doc.text")
+            // Use a link-specific icon when the entire content is a URL.
+            Image(systemName: item.isLink ? "link" : "doc.text")
                 .font(.system(size: 14))
-                .foregroundColor(.secondary)
+                .foregroundColor(item.isLink ? .accentColor : .secondary)
                 .frame(width: 18)
         case .image:
             if let path = item.imagePath,
@@ -265,6 +314,18 @@ struct ItemRow: View {
 
     private var actionButtons: some View {
         HStack(spacing: 6) {
+            // Open-in-browser button — only shown for link items.
+            // Separate from copy (single-click) and auto-paste (double-click).
+            if item.isLink {
+                Button(action: onOpenLink) {
+                    Image(systemName: "safari")
+                        .font(.system(size: 11))
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Open in default browser")
+            }
+
             Button(action: onPin) {
                 Image(systemName: item.isPinned ? "pin.slash" : "pin")
                     .font(.system(size: 11))
