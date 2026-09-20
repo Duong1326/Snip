@@ -10,11 +10,12 @@ import CoreGraphics
 //
 // @MainActor is required because it accesses @MainActor objects.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - UI Components
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var panel: NSPanel!
+    private var clickMonitor: Any?
 
     // MARK: - Core Monitors
     private let monitor = ClipboardMonitor()
@@ -31,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: ["dragZoneEnabled": true])
 
         setupStatusItem()
-        setupPopover()
+        setupPanel()
         setupDragZoneIfNeeded()
         observeDragZoneToggle()
 
@@ -52,34 +53,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         button.image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "Clipboard History")
         button.image?.isTemplate = true
-        button.action = #selector(togglePopover)
+        button.action = #selector(togglePanel)
         button.target = self
     }
 
-    private func setupPopover() {
-        popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 420)
-        popover.behavior = .transient
-        popover.animates = true
+    private func setupPanel() {
+        let contentView = ContentView().environmentObject(monitor)
+        let hc = NSHostingController(rootView: contentView)
+        hc.view.wantsLayer = true
+        hc.view.layer?.backgroundColor = .clear
 
-        let contentView = ContentView()
-            .environmentObject(monitor)
+        let panelWidth = AppConstants.popoverWidth
+        let panelHeight = AppConstants.popoverHeight + 12 // 12 for the arrow
 
-        popover.contentViewController = NSHostingController(rootView: contentView)
+        panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            styleMask: [.nonactivatingPanel, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        panel.contentViewController = hc
     }
 
-    @objc private func togglePopover() {
-        guard let button = statusItem.button else { return }
-
-        if popover.isShown {
-            popover.performClose(nil)
+    @objc private func togglePanel() {
+        if panel.isVisible {
+            hidePanel()
         } else {
-            // Capture the currently active app BEFORE our popover steals focus.
-            // This is the app the user wants to paste into later.
-            previousActiveApp = NSWorkspace.shared.frontmostApplication
+            showPanel()
+        }
+    }
 
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApplication.shared.activate(ignoringOtherApps: true)
+    private func showPanel() {
+        guard let button = statusItem.button, let window = button.window else { return }
+
+        // Capture the currently active app BEFORE our panel steals focus.
+        // This is the app the user wants to paste into later.
+        previousActiveApp = NSWorkspace.shared.frontmostApplication
+
+        let buttonRect = window.convertToScreen(button.frame)
+        let panelWidth = AppConstants.popoverWidth
+        let panelHeight = AppConstants.popoverHeight + 12
+
+        let panelFrame = NSRect(
+            x: buttonRect.midX - panelWidth / 2,
+            y: buttonRect.minY - panelHeight,
+            width: panelWidth,
+            height: panelHeight
+        )
+
+        panel.setFrame(panelFrame, display: true)
+        panel.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.hidePanel()
+        }
+    }
+
+    private func hidePanel() {
+        panel.orderOut(nil)
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickMonitor = nil
         }
     }
 
@@ -93,7 +133,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func performAutoPaste() {
         guard checkAccessibilityPermission() else { return }
 
-        popover.performClose(nil)
+        if panel.isVisible {
+            hidePanel()
+        }
 
         if let app = previousActiveApp, !app.isTerminated {
             app.activate(options: [])
@@ -102,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // it will target whichever window has focus at that moment.
 
         // Short delay so the target app has time to become key window before the keystroke.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.autoPasteDelay) {
             self.simulateCommandV()
         }
     }
@@ -144,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Cancel")
 
         if alert.runModal() == .alertFirstButtonReturn {
+            // This is a well-known Apple deep-link URL — the string is a constant and never nil.
             let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
             NSWorkspace.shared.open(url)
         }

@@ -1,17 +1,17 @@
-# snip — Clipboard History Manager for macOS
+# Snip — Clipboard History Manager for macOS
 
-A lightweight, native macOS menu bar app to manage your clipboard history.  
+A lightweight, native macOS menu bar app to manage your clipboard history.
 Built with Swift + SwiftUI, runs entirely local, zero external dependencies.
 
 ---
 
 ## Yêu cầu hệ thống
 
-| Mục | Yêu cầu |
-|-----|---------|
-| macOS | 13 Ventura trở lên |
-| Chip | Apple Silicon hoặc Intel |
-| Swift | 5.9+ |
+| Mục      | Yêu cầu                                  |
+| --------- | ------------------------------------------ |
+| macOS     | 13 Ventura trở lên                       |
+| Chip      | Apple Silicon hoặc Intel                  |
+| Swift     | 5.9+                                       |
 | Xcode CLT | Command Line Tools (không cần Xcode IDE) |
 
 ---
@@ -46,8 +46,7 @@ swift build
 swift run
 ```
 
-App sẽ **không hiện gì trên màn hình** — đó là bình thường.  
-Nhìn lên **thanh menu** (góc phải trên cùng màn hình), bạn sẽ thấy icon 📋.
+App sẽ **không hiện gì trên màn hình** — đó là bình thường.Nhìn lên **thanh menu** (góc phải trên cùng màn hình), bạn sẽ thấy icon 📋.
 
 > **Tip:** Lần đầu build sẽ mất 1-2 phút để compile. Các lần sau nhanh hơn nhiều.
 
@@ -56,11 +55,13 @@ Nhìn lên **thanh menu** (góc phải trên cùng màn hình), bạn sẽ thấ
 ## Dừng app
 
 Cách 1 — Từ Terminal (nếu chạy bằng `swift run`):
+
 ```
 Ctrl + C
 ```
 
 Cách 2 — Từ menu bar (khi đã build thành binary):
+
 ```bash
 pkill snip
 ```
@@ -70,21 +71,27 @@ pkill snip
 ## Cách dùng
 
 ### Xem lịch sử clipboard
+
 Click vào icon 📋 trên menu bar → Popover hiện ra với danh sách các mục đã copy.
 
 ### Tìm kiếm
+
 Gõ vào ô tìm kiếm ở trên cùng của popover.
 
 ### Copy lại một mục
+
 Click vào bất kỳ mục nào trong danh sách → nội dung được copy vào clipboard.
 
 ### Ghim mục quan trọng
+
 Hover vào mục → click icon 📌 → mục được ghim (không bị auto-xóa, hiện ưu tiên đầu danh sách).
 
 ### Xóa một mục
+
 Hover vào mục → click icon 🗑️.
 
 ### Xóa toàn bộ lịch sử
+
 Cuộn xuống cuối popover → click "Xóa lịch sử (giữ mục ghim)".
 
 ---
@@ -92,6 +99,7 @@ Cuộn xuống cuối popover → click "Xóa lịch sử (giữ mục ghim)".
 ## Tính năng Drag Zone
 
 ### Bật Drag Zone
+
 Trong popover → kéo xuống phần Settings → bật toggle **Drag Zone**.
 
 > ⚠️ **Cần quyền Accessibility:** Lần đầu bật, macOS sẽ hỏi cấp quyền.
@@ -99,12 +107,12 @@ Trong popover → kéo xuống phần Settings → bật toggle **Drag Zone**.
 ### Cấp quyền Accessibility (bắt buộc cho Drag Zone)
 
 1. Mở **System Settings** → **Privacy & Security** → **Accessibility**
-2. Click dấu **+** → thêm app `snip`  
-   *(hoặc nếu dùng `swift run`: thêm **Terminal** hoặc **iTerm2**)*
+2. Click dấu **+** → thêm app **Snip** *(hoặc nếu dùng `swift run`: thêm **Terminal** hoặc **iTerm2**)*
 3. Bật toggle cho app đó
-4. **Quay lại snip** → bật lại toggle Drag Zone
+4. **Quay lại Snip** → bật lại toggle Drag Zone
 
 ### Cách dùng Drag Zone
+
 1. Bôi đen (select) text ở bất kỳ app nào (Safari, Notes, Word...)
 2. **Kéo** đoạn text đó (không cần Cmd+C)
 3. Thả vào panel nhỏ nổi ở góc dưới phải màn hình
@@ -126,7 +134,7 @@ Tất cả dữ liệu lưu tại:
     └── ...
 ```
 
-**Giới hạn:** Tối đa 200 mục (mục ghim không tính vào giới hạn).  
+**Giới hạn:** Tối đa 200 mục (mục ghim không tính vào giới hạn).
 Khi vượt giới hạn, mục cũ nhất bị xóa tự động (kèm file ảnh nếu có).
 
 ---
@@ -144,6 +152,7 @@ Electron nhúng toàn bộ Chromium browser engine (~100-150MB RAM chỉ để c
 ### Hạn chế của Drag Zone heuristic
 
 Drag Zone dùng **heuristic** (phỏng đoán) để phát hiện khi bạn đang kéo:
+
 - Phát hiện `leftMouseDown` → di chuyển >10px → coi là "có thể đang kéo" → hiện panel
 - **False positive:** Panel có thể hiện khi bạn click-drag để scroll (không phải drag nội dung)
 - **False negative:** Hiếm khi không phát hiện nếu drag quá nhanh
@@ -155,11 +164,15 @@ Drag Zone dùng **heuristic** (phỏng đoán) để phát hiện khi bạn đan
 
 ```
 Sources/snip/
-├── main.swift           # Entry point, NSApplication setup
-├── AppDelegate.swift    # Status bar icon, popover, điều phối monitor
-├── ClipboardItem.swift  # Data model (Codable)
-├── ClipboardMonitor.swift  # Polling, lưu JSON, quản lý ảnh
-├── ContentView.swift    # SwiftUI UI chính
-├── DragZonePanel.swift  # NSPanel + NSDraggingDestination
-└── DragMonitor.swift    # Global mouse event monitor
+├── App/
+│   ├── main.swift              # Entry point, NSApplication setup
+│   └── AppDelegate.swift       # Status bar icon, popover, điều phối monitor
+├── Models/
+│   └── ClipboardItem.swift     # Data model (Codable)
+├── Managers/
+│   ├── ClipboardMonitor.swift  # Polling, lưu JSON, quản lý ảnh
+│   └── DragMonitor.swift       # Global mouse event monitor
+└── Views/
+    ├── ContentView.swift       # SwiftUI UI chính
+    └── DragZonePanel.swift     # NSPanel + NSDraggingDestination
 ```

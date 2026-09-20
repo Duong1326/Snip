@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - ContentView
 // Main UI displayed in NSPopover when clicking the menu bar icon.
@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var copiedID: UUID? = nil
 
     // MARK: - Filtered list
-    // Pinned items appear first, then unpinned. 
+    // Pinned items appear first, then unpinned.
     // Filters by searchText if provided.
     var filteredItems: [ClipboardItem] {
         let all = monitor.items
@@ -42,66 +42,51 @@ struct ContentView: View {
 
         return filtered.sorted { lhs, rhs in
             if lhs.isPinned != rhs.isPinned {
-                return lhs.isPinned 
+                return lhs.isPinned
             }
-            return false 
+            return false
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            searchBar
-            Divider()
-
+            Color.clear.frame(height: 12) // Space for the arrow
+            
             if filteredItems.isEmpty {
                 emptyState
             } else {
                 itemList
             }
 
-            Divider()
+            Divider().opacity(0.5)
             footer
         }
-        .frame(width: 320)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(width: AppConstants.popoverWidth, height: AppConstants.popoverHeight + 12, alignment: .top)
+        .background(.clear)
+        .glassEffect(in: PopoverShape(cornerRadius: AppConstants.popoverCornerRadius))
+        .overlay {
+            PopoverShape(cornerRadius: AppConstants.popoverCornerRadius)
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.8), .white.opacity(0.1), .white.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .clipShape(PopoverShape(cornerRadius: AppConstants.popoverCornerRadius))
     }
 
     // MARK: - Subviews
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-                .font(.system(size: 13))
-
-            TextField("Search...", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "clipboard")
-                .font(.system(size: 36))
-                .foregroundColor(.secondary)
-            Text(searchText.isEmpty ? "No items in history" : "No results found")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-        .frame(height: 280)
+        Text(searchText.isEmpty ? "No items in history" : "No results found")
+            .font(.system(size: 13))
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
     }
 
     private var itemList: some View {
@@ -121,17 +106,14 @@ struct ContentView: View {
                         .padding(.leading, 12)
                 }
             }
+            .padding(.vertical, 8)
         }
-        .frame(height: 300)
     }
 
     private var footer: some View {
         VStack(spacing: 0) {
             // Auto-Paste toggle
             HStack {
-                Image(systemName: "doc.on.clipboard")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 12))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Auto-Paste on Double-click")
                         .font(.system(size: 12))
@@ -152,9 +134,6 @@ struct ContentView: View {
 
             // Drag Zone toggle
             HStack {
-                Image(systemName: "arrow.down.to.line.alt")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 12))
                 Text("Drag Zone")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
@@ -162,8 +141,7 @@ struct ContentView: View {
                 Toggle("", isOn: $dragZoneEnabled)
                     .toggleStyle(.switch)
                     .controlSize(.mini)
-                    // Single argument onChange for macOS 13 compatibility
-                    .onChange(of: dragZoneEnabled) { newValue in
+                    .onChange(of: dragZoneEnabled) { _, newValue in
                         NotificationCenter.default.post(
                             name: .dragZoneToggled,
                             object: newValue
@@ -176,17 +154,24 @@ struct ContentView: View {
             Divider()
 
             Button(action: { monitor.clearHistory() }) {
-                HStack {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
-                    Text("Clear history (keep pinned)")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(.red.opacity(0.8))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                Text("Clear history (keep pinned)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.red.opacity(0.8))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+
+            Divider()
+
+            Button(action: { NSApplication.shared.terminate(nil) }) {
+                Text("Quit Snip")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.glass)
         }
     }
 
@@ -243,17 +228,16 @@ struct ItemRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(
-            Group {
-                if isCopied {
-                    Color.accentColor.opacity(0.15)
-                } else if isHovered {
-                    Color(NSColor.selectedContentBackgroundColor).opacity(0.1)
-                } else {
-                    Color.clear
-                }
-            }
-        )
+        .background {
+            RoundedRectangle(cornerRadius: AppConstants.rowCornerRadius)
+                .fill(
+                    isCopied
+                        ? Color.accentColor.opacity(0.15)
+                        : isHovered
+                            ? Color(NSColor.selectedContentBackgroundColor).opacity(0.08)
+                            : Color.clear
+                )
+        }
         .contentShape(Rectangle())
         // Double-tap MUST be declared before single-tap so SwiftUI can distinguish them.
         // SwiftUI gives priority to the gesture declared first when the same gesture type
@@ -277,14 +261,17 @@ struct ItemRow: View {
     private var contentIcon: some View {
         switch item.type {
         case .text:
-            // Use a link-specific icon when the entire content is a URL.
-            Image(systemName: item.isLink ? "link" : "doc.text")
-                .font(.system(size: 14))
-                .foregroundColor(item.isLink ? .accentColor : .secondary)
-                .frame(width: 18)
+            // Show link icon only for URL items — plain text needs no icon.
+            if item.isLink {
+                Image(systemName: "link")
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentColor)
+                    .frame(width: 18)
+            }
         case .image:
             if let path = item.imagePath,
-               let nsImg = NSImage(contentsOfFile: path) {
+                let nsImg = NSImage(contentsOfFile: path)
+            {
                 Image(nsImage: nsImg)
                     .resizable()
                     .scaledToFill()
@@ -306,7 +293,7 @@ struct ItemRow: View {
             Text(item.previewText)
                 .foregroundColor(.primary)
         case .image:
-            Text("📷 Image")
+            Text("Image")
                 .foregroundColor(.secondary)
                 .italic()
         }
@@ -347,4 +334,60 @@ struct ItemRow: View {
 
 extension Notification.Name {
     static let dragZoneToggled = Notification.Name("dragZoneToggled")
+}
+
+// MARK: - Custom Popover Shape
+// Draws the Liquid Glass popover shape, including the arrow that points to the menu bar icon.
+struct PopoverShape: Shape {
+    var cornerRadius: CGFloat
+    var arrowWidth: CGFloat = 20
+    var arrowHeight: CGFloat = 12
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let yStart = arrowHeight
+        
+        // Start top-left
+        path.move(to: CGPoint(x: cornerRadius, y: yStart))
+        
+        // Arrow
+        path.addLine(to: CGPoint(x: rect.midX - arrowWidth / 2, y: yStart))
+        path.addLine(to: CGPoint(x: rect.midX, y: 0))
+        path.addLine(to: CGPoint(x: rect.midX + arrowWidth / 2, y: yStart))
+        
+        // Top-right corner
+        path.addLine(to: CGPoint(x: rect.width - cornerRadius, y: yStart))
+        path.addArc(center: CGPoint(x: rect.width - cornerRadius, y: yStart + cornerRadius),
+                    radius: cornerRadius,
+                    startAngle: .degrees(-90),
+                    endAngle: .degrees(0),
+                    clockwise: false)
+        
+        // Bottom-right corner
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height - cornerRadius))
+        path.addArc(center: CGPoint(x: rect.width - cornerRadius, y: rect.height - cornerRadius),
+                    radius: cornerRadius,
+                    startAngle: .degrees(0),
+                    endAngle: .degrees(90),
+                    clockwise: false)
+        
+        // Bottom-left corner
+        path.addLine(to: CGPoint(x: cornerRadius, y: rect.height))
+        path.addArc(center: CGPoint(x: cornerRadius, y: rect.height - cornerRadius),
+                    radius: cornerRadius,
+                    startAngle: .degrees(90),
+                    endAngle: .degrees(180),
+                    clockwise: false)
+        
+        // Top-left corner
+        path.addLine(to: CGPoint(x: 0, y: yStart + cornerRadius))
+        path.addArc(center: CGPoint(x: cornerRadius, y: yStart + cornerRadius),
+                    radius: cornerRadius,
+                    startAngle: .degrees(180),
+                    endAngle: .degrees(270),
+                    clockwise: false)
+        
+        path.closeSubpath()
+        return path
+    }
 }

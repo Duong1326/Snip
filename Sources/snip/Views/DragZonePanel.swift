@@ -21,7 +21,10 @@ final class DragZonePanel: NSPanel {
 
     // MARK: - Init
     init() {
-        let size = NSSize(width: 200, height: 200)
+        let size = NSSize(
+            width: AppConstants.dragZonePanelSize,
+            height: AppConstants.dragZonePanelSize
+        )
         super.init(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -60,7 +63,8 @@ final class DragZonePanel: NSPanel {
         let sv = screen.visibleFrame
         // Read size from the current frame (still intact at init time, before any animation).
         let size = frame.size
-        let origin = NSPoint(x: sv.maxX - size.width - 20, y: sv.minY + 20)
+        let margin = AppConstants.dragZoneMargin
+        let origin = NSPoint(x: sv.maxX - size.width - margin, y: sv.minY + margin)
         setFrameOrigin(origin)
         // Cache the correct full-size frame for use in showWithFade().
         panelTargetFrame = NSRect(origin: origin, size: size)
@@ -86,9 +90,9 @@ final class DragZonePanel: NSPanel {
         alphaValue = 0
         orderFront(nil)
 
-        // Animate size and opacity together over 1 second.
+        // Animate size and opacity together.
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 1.0
+            ctx.duration = AppConstants.panelShowDuration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.animator().setFrame(targetFrame, display: true)
             self.animator().alphaValue = 1.0
@@ -99,11 +103,13 @@ final class DragZonePanel: NSPanel {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             NSAnimationContext.runAnimationGroup(
                 { ctx in
-                    ctx.duration = 0.2
+                    ctx.duration = AppConstants.panelHideDuration
                     self?.animator().alphaValue = 0
                 },
                 completionHandler: {
-                    self?.orderOut(nil)
+                    MainActor.assumeIsolated {
+                        self?.orderOut(nil)
+                    }
                 })
         }
     }
@@ -123,7 +129,7 @@ final class DropTargetView: NSView {
     private var state: DropState = .idle {
         didSet {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.15
+                ctx.duration = AppConstants.stateTransitionDuration
                 self.needsDisplay = true
             }
         }
@@ -251,7 +257,7 @@ final class DropTargetView: NSView {
         // --- Image (TIFF) ---
         if let imgData = pb.data(forType: .tiff),
             let image = NSImage(data: imgData),
-            let item = saveImageItem(image)
+            let item = makeImageItem(from: image)
         {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([image])
@@ -263,7 +269,7 @@ final class DropTargetView: NSView {
         let pngType = NSPasteboard.PasteboardType("public.png")
         if let imgData = pb.data(forType: pngType),
             let image = NSImage(data: imgData),
-            let item = saveImageItem(image)
+            let item = makeImageItem(from: image)
         {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([image])
@@ -276,37 +282,21 @@ final class DropTargetView: NSView {
     }
 
     // MARK: - Helpers
+
     private func flashSuccess(completion: @escaping () -> Void) {
         state = .success
         completion()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.successFlashDuration) { [weak self] in
             self?.state = .idle
-            // Notify DragMonitor that the success animation is done so it can
-            // hide the panel. We reset to .idle first so the panel looks correct
-            // if it is ever shown again for a subsequent drag.
+            // Notify DragMonitor that the success animation is done so it can hide the panel.
+            // Reset to .idle first so the panel looks correct on the next drag.
             self?.onDropSucceeded?()
         }
     }
 
-    private func saveImageItem(_ image: NSImage) -> ClipboardItem? {
-        let fm = FileManager.default
-        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let imagesDir = base.appendingPathComponent("snip/Images", isDirectory: true)
-        try? fm.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-
-        let fileURL = imagesDir.appendingPathComponent(UUID().uuidString + ".png")
-
-        guard let tiff = image.tiffRepresentation,
-            let bitmap = NSBitmapImageRep(data: tiff),
-            let png = bitmap.representation(using: .png, properties: [:])
-        else { return nil }
-
-        do {
-            try png.write(to: fileURL)
-            return ClipboardItem.makeImage(path: fileURL.path)
-        } catch {
-            print("[DragZone] Failed to save image: \(error)")
-            return nil
-        }
+    /// Saves `image` to disk via PersistenceManager and wraps the result in a ClipboardItem.
+    private func makeImageItem(from image: NSImage) -> ClipboardItem? {
+        guard let path = PersistenceManager.saveImage(image) else { return nil }
+        return ClipboardItem.makeImage(path: path)
     }
 }

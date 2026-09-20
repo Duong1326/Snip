@@ -1,9 +1,28 @@
+# macOS system files
 .DS_Store
+.DS_Store?
+._*
+
+# Swift Package Manager
 /.build
 /Packages
-xcuserdata/
-DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# Build artifacts
+*.app/
+*.app
+DerivedData/
+xcuserdata/
+
+#Xcode
+*.xcodeproj
+*.xcworkspace
+
+#History files
+history.json
+Images/
+
+#docs
 docs/

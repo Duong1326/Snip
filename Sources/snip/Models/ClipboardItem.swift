@@ -1,12 +1,15 @@
 import Foundation
 
 // MARK: - ClipboardItemType
+/// The kind of content stored in a clipboard item.
 enum ClipboardItemType: String, Codable {
     case text
-    case image  // Image is stored on disk, JSON stores the path
+    case image  // Image is stored on disk; JSON stores only the file path.
 }
 
 // MARK: - ClipboardItem
+/// A single entry in the clipboard history.
+/// Text content is stored inline; images are saved to disk and referenced by path.
 struct ClipboardItem: Codable, Identifiable {
     let id: UUID
     let type: ClipboardItemType
@@ -50,6 +53,7 @@ struct ClipboardItem: Codable, Identifiable {
         self.isLink      = isLink
     }
 
+    /// Creates a text clipboard item, optionally marking it as a link.
     static func makeText(_ text: String, isLink: Bool = false) -> ClipboardItem {
         ClipboardItem(
             id: UUID(),
@@ -62,6 +66,7 @@ struct ClipboardItem: Codable, Identifiable {
         )
     }
 
+    /// Creates an image clipboard item referencing the given on-disk file path.
     static func makeImage(path: String) -> ClipboardItem {
         ClipboardItem(
             id: UUID(),
@@ -74,11 +79,14 @@ struct ClipboardItem: Codable, Identifiable {
     }
 
     // MARK: - UI Preview
+    /// A short string suitable for display in the history list row.
     var previewText: String {
         switch type {
         case .text:
             let raw = textContent ?? ""
-            return raw.count > 120 ? String(raw.prefix(120)) + "…" : raw
+            return raw.count > AppConstants.textPreviewLength
+                ? String(raw.prefix(AppConstants.textPreviewLength)) + "…"
+                : raw
         case .image:
             return "Image"
         }
