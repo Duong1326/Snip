@@ -94,21 +94,24 @@ final class DragMonitor {
 
     private func installMouseMonitors() {
         // leftMouseDown — record the click origin so we can measure movement.
-        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) {
+            [weak self] event in
             Task { @MainActor in
                 self?.handleMouseDown(event)
             }
         }
 
         // leftMouseDragged — after threshold is crossed, show the panel.
-        mouseDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
+        mouseDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) {
+            [weak self] event in
             Task { @MainActor in
                 self?.handleMouseDragged(event)
             }
         }
 
         // leftMouseUp — hide the panel if the drop didn't land in our panel.
-        mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+        mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) {
+            [weak self] event in
             Task { @MainActor in
                 self?.handleMouseUp(event)
             }
@@ -116,9 +119,18 @@ final class DragMonitor {
     }
 
     private func removeMouseMonitors() {
-        if let m = mouseDownMonitor { NSEvent.removeMonitor(m); mouseDownMonitor = nil }
-        if let m = mouseDragMonitor { NSEvent.removeMonitor(m); mouseDragMonitor = nil }
-        if let m = mouseUpMonitor   { NSEvent.removeMonitor(m); mouseUpMonitor = nil }
+        if let m = mouseDownMonitor {
+            NSEvent.removeMonitor(m)
+            mouseDownMonitor = nil
+        }
+        if let m = mouseDragMonitor {
+            NSEvent.removeMonitor(m)
+            mouseDragMonitor = nil
+        }
+        if let m = mouseUpMonitor {
+            NSEvent.removeMonitor(m)
+            mouseUpMonitor = nil
+        }
     }
 
     // MARK: - Event handlers
@@ -133,7 +145,7 @@ final class DragMonitor {
     }
 
     private func handleMouseDragged(_ event: NSEvent) {
-        guard !isPanelVisible else { return }       // already visible → nothing to do
+        guard !isPanelVisible else { return }  // already visible → nothing to do
         guard let origin = mouseDownLocation else { return }
 
         // Gate 1 — spatial threshold: ignore tiny cursor jitter.
@@ -185,7 +197,8 @@ final class DragMonitor {
     private func checkAccessibilityPermission() -> Bool {
         if AXIsProcessTrusted() { return true }
 
-        print("""
+        print(
+            """
             [DragMonitor] ⚠️  Accessibility permission is NOT granted.
             Global mouse monitoring is disabled — the Drag Zone panel will
             not appear automatically during drags from other apps.

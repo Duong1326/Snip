@@ -46,4 +46,8 @@ cat << 'PLIST' > "${CONTENTS_DIR}/Info.plist"
 </plist>
 PLIST
 
+# Sign the app to ensure macOS remembers accessibility permissions
+echo "Signing the app bundle..."
+codesign --force --deep --sign - "${APP_DIR}"
+
 echo "Successfully created ${APP_DIR}!"
